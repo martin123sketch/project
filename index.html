@@ -24,11 +24,13 @@
 
 <canvas id="gameCanvas"></canvas>
 
+<input type="file" id="fileInput" accept=".cpp,.txt" style="display: none;">
+
 <script>
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
+    const fileInput = document.getElementById('fileInput');
 
-    // Ajuste de pantalla automático
     function resizeCanvas() {
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
@@ -36,13 +38,13 @@
     window.addEventListener('resize', resizeCanvas);
     resizeCanvas();
 
-    // Variables de estado del IDE
-    let lineasCodigo = ["#include <iostream>", "int main() {", "    return 0;", "}"];
+    // Variables de estado
+    let lineasCodigo = ["#include <iostream>", "int main() {", "    std::cout << \"¡Hola Android!\" << std::endl;", "    return 0;", "}"];
     let lineaActual = 0;
     let columnaActual = 0;
     let scrollY = 0;
     const altoLinea = 25;
-    const tamanioFuente = 20;
+    const tamanioFuente = 18;
 
     let temporizadorCursor = 0;
     let mostrarCursor = true;
@@ -50,16 +52,26 @@
     let archivoAbiertoActual = "Sin_Nombre.cpp";
     let modoBuscadorLinea = false;
     let inputLineaBuscada = "";
+    
+    let modoRenombrar = false;
+    let nuevoNombreTemp = "";
 
-    // --- TEXTAREA OCULTO PARA CONTROL TOTAL DEL TECLADO EN ANDROID ---
+    // --- TEXTAREA OCULTO PARA EL TECLADO EN CELULARES ---
     const tecladoOculto = document.createElement('textarea');
     tecladoOculto.style.position = 'absolute';
-    tecladoOculto.style.left = '-9999px'; // Lo mandamos fuera de la pantalla
-    tecladoOculto.style.top = '0';
+    tecladoOculto.style.left = '0px';
+    tecladoOculto.style.top = '0px';
+    tecladoOculto.style.width = '1px';
+    tecladoOculto.style.height = '1px';
+    tecladoOculto.style.opacity = '0.01';
+    tecladoOculto.style.border = 'none';
+    tecladoOculto.style.outline = 'none';
     tecladoOculto.value = "";
     document.body.appendChild(tecladoOculto);
 
-    // Bucle de renderizado (Simulación Raylib)
+    tecladoOculto.addEventListener('focus', () => window.scrollTo(0, 0));
+
+    // Bucle de renderizado
     function UpdateAndDraw() {
         temporizadorCursor += 1/60;
         if (temporizadorCursor >= 0.5) {
@@ -67,124 +79,228 @@
             temporizadorCursor = 0;
         }
 
-        // Limpiar pantalla (Fondo oscuro de IDE)
+        // Fondo oscuro
         ctx.fillStyle = "#1e1e1e";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
         // Dibujar líneas de código
         ctx.font = `${tamanioFuente}px monospace`;
         for (let l = 0; l < lineasCodigo.length; l++) {
-            let dibujoY = 80 + (l * altoLinea) - scrollY;
+            let dibujoY = 120 + (l * altoLinea) - scrollY; // Bajamos el código para dar espacio a la botonera
 
-            if (dibujoY < 45 || dibujoY > canvas.height - 100) continue;
+            if (dibujoY < 100 || dibujoY > canvas.height - 50) continue;
 
             // Números de línea
             ctx.fillStyle = "#858585";
             ctx.fillText((l + 1).toString(), 20, dibujoY);
 
-            // Línea separadora
+            // Separador
             ctx.fillStyle = "#3c3c3c";
-            ctx.fillRect(55, dibujoY - 18, 2, altoLinea);
+            ctx.fillRect(55, dibujoY - 16, 2, altoLinea);
 
-            // Resaltado de línea activa
             if (l === lineaActual) {
                 ctx.fillStyle = "rgba(255, 255, 255, 0.05)";
-                ctx.fillRect(65, dibujoY - 18, canvas.width - 80, altoLinea);
+                ctx.fillRect(65, dibujoY - 16, canvas.width - 80, altoLinea);
             }
 
-            // Renderizado de texto con colores (Syntax Highlighting)
             let linea = lineasCodigo[l];
             let acumuladoX = 70;
             let palabras = linea.split(/(\s+)/);
 
             palabras.forEach(palabra => {
                 if (palabra.trim().startsWith("#include") || palabra.trim().startsWith("#")) {
-                    ctx.fillStyle = "#9632fa"; // Violeta para directivas
-                } else if (["int", "while", "if", "return", "void", "using", "namespace"].includes(palabra.trim())) {
-                    ctx.fillStyle = "#3296fa"; // Azul para palabras clave
+                    ctx.fillStyle = "#9632fa";
+                } else if (["int", "while", "if", "return", "void", "using", "namespace", "std", "cout", "endl"].includes(palabra.trim())) {
+                    ctx.fillStyle = "#3296fa";
                 } else {
-                    ctx.fillStyle = "#ffffff"; // Blanco común
+                    ctx.fillStyle = "#ffffff";
                 }
                 ctx.fillText(palabra, acumuladoX, dibujoY);
                 acumuladoX += ctx.measureText(palabra).width;
             });
 
-            // Dibujar el cursor violeta en la posición exacta
-            if (l === lineaActual && mostrarCursor && !modoBuscadorLinea) {
+            if (l === lineaActual && mostrarCursor && !modoBuscadorLinea && !modoRenombrar) {
                 let textoHastaCursor = linea.substring(0, columnaActual);
                 let xCursor = 70 + ctx.measureText(textoHastaCursor).width;
                 ctx.fillStyle = "#b446ff";
-                ctx.fillRect(xCursor, dibujoY - 18, 2, tamanioFuente);
+                ctx.fillRect(xCursor, dibujoY - 16, 2, tamanioFuente);
             }
         }
 
-        // --- BOTÓN TÁCTIL SUPERIOR (BUSCADOR DE LÍNEAS) ---
-        ctx.fillStyle = "#333333";
-        ctx.fillRect(canvas.width - 160, 15, 140, 35);
-        ctx.fillStyle = "#ffffff";
-        ctx.font = "14px sans-serif";
-        ctx.fillText("Buscar Línea", canvas.width - 135, 38);
+        // --- PANEL SUPERIOR / BOTONERA TÁCTIL ---
+        ctx.fillStyle = "#2d2d2d";
+        ctx.fillRect(0, 0, canvas.width, 100);
 
-        // Barra inferior de estado
+        // Botones de acción (Ancho dinámico basado en pantalla)
+        const btnW = (canvas.width - 60) / 5;
+        const nombresBotones = ["Nuevo", "Abrir", "Guardar", "Buscar L.", "Ejecutar"];
+        
+        ctx.font = "12px sans-serif";
+        for (let i = 0; i < 5; i++) {
+            let btnX = 10 + i * (btnW + 10);
+            ctx.fillStyle = i === 4 ? "#0e639c" : "#3c3c3c"; // El botón Ejecutar va en azul
+            ctx.fillRect(btnX, 10, btnW, 40);
+            ctx.fillStyle = "#ffffff";
+            ctx.textAlign = "center";
+            ctx.fillText(nombresBotones[i], btnX + btnW/2, 33);
+        }
+        ctx.textAlign = "left"; // Resetear alineación
+
+        // Zona interactiva del Nombre del Archivo (¡Permite cambiar el nombre!)
+        ctx.fillStyle = "#1e1e1e";
+        ctx.fillRect(10, 60, canvas.width - 20, 30);
+        ctx.strokeStyle = "#007acc";
+        ctx.strokeRect(10, 60, canvas.width - 20, 30);
+        
+        ctx.fillStyle = "#858585";
+        ctx.font = "12px sans-serif";
+        ctx.fillText("Archivo activo (Toca para renombrar):", 20, 78);
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "bold 14px sans-serif";
+        ctx.fillText(archivoAbiertoActual, 240, 79);
+
+        // --- BARRA DE ESTADO INFERIOR ---
         ctx.fillStyle = "#007acc";
-        ctx.fillRect(0, canvas.height - 40, canvas.width, 40);
+        ctx.fillRect(0, canvas.height - 35, canvas.width, 35);
         ctx.fillStyle = "#ffffff";
-        ctx.fillText(`Archivo: ${archivoAbiertoActual}  |  Línea: ${lineaActual + 1}, Col: ${columnaActual}`, 20, canvas.height - 15);
+        ctx.font = "13px sans-serif";
+        ctx.fillText(`Línea: ${lineaActual + 1} | Columna: ${columnaActual} | Líneas totales: ${lineasCodigo.length}`, 20, canvas.height - 13);
 
-        // Pantalla flotante del Buscador de Líneas
+        // --- MODALES (Buscador y Renombrar) ---
         if (modoBuscadorLinea) {
-            ctx.fillStyle = "rgba(0,0,0,0.85)";
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.fillStyle = "#fff";
-            ctx.font = "22px sans-serif";
-            ctx.fillText("Ir a la línea: " + inputLineaBuscada + "_", canvas.width/2 - 100, canvas.height/2);
-            ctx.font = "14px sans-serif";
-            ctx.fillStyle = "#888";
-            ctx.fillText("Escribí el número y tocá Enter en el teclado", canvas.width/2 - 120, canvas.height/2 + 40);
+            dibujarModal("Ir a la línea:", inputLineaBuscada);
+        } else if (modoRenombrar) {
+            dibujarModal("Nuevo nombre de archivo:", nuevoNombreTemp);
         }
 
         requestAnimationFrame(UpdateAndDraw);
     }
 
-    // --- LÓGICA TÁCTIL PARA CELULARES ---
-    window.addEventListener('touchstart', (e) => {
-        const touchX = e.touches[0].clientX;
-        const touchY = e.touches[0].clientY;
+    function dibujarModal(titulo, valor) {
+        ctx.fillStyle = "rgba(0,0,0,0.9)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#fff";
+        ctx.font = "20px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(titulo, canvas.width/2, canvas.height/2 - 40);
+        ctx.font = "bold 24px monospace";
+        ctx.fillStyle = "#b446ff";
+        ctx.fillText(valor + "_", canvas.width/2, canvas.height/2 + 10);
+        ctx.font = "12px sans-serif";
+        ctx.fillStyle = "#888";
+        ctx.fillText("Escribí y tocá Enter en el teclado para confirmar", canvas.width/2, canvas.height/2 + 60);
+        ctx.textAlign = "left";
+    }
 
-        // Si toca el botón "Buscar Línea" arriba a la derecha
-        if (touchX > canvas.width - 160 && touchX < canvas.width - 20 && touchY > 15 && touchY < 50) {
-            modoBuscadorLinea = true;
-            inputLineaBuscada = "";
-            tecladoOculto.value = "";
-        } else {
-            // Sincroniza el contenido de la línea actual con el textarea oculto
-            tecladoOculto.value = lineasCodigo[lineaActual];
-            tecladoOculto.selectionStart = columnaActual;
-            tecladoOculto.selectionEnd = columnaActual;
+    // --- LÓGICA DE CONTROL TÁCTIL (MÓVIL) ---
+    window.addEventListener('touchend', (e) => {
+        const touchX = e.changedTouches[0].clientX;
+        const touchY = e.changedTouches[0].clientY;
+
+        // Ancho de los botones
+        const btnW = (canvas.width - 60) / 5;
+
+        // ¿Tocó la botonera superior (Y entre 10 y 50)?
+        if (touchY >= 10 && touchY <= 50) {
+            for (let i = 0; i < 5; i++) {
+                let btnX = 10 + i * (btnW + 10);
+                if (touchX >= btnX && touchX <= btnX + btnW) {
+                    ejecutarBoton(i);
+                    return;
+                }
+            }
         }
-        tecladoOculto.focus(); // Levanta el teclado virtual de Android
-    });
 
-    // Maneja letras, espacios, caracteres especiales y sugerencias predictivas del celular
-    tecladoOculto.addEventListener('input', (e) => {
-        if (modoBuscadorLinea) {
-            let textoEntrada = tecladoOculto.value;
-            inputLineaBuscada = textoEntrada.replace(/\D/g, ''); // Solo números
-            tecladoOculto.value = inputLineaBuscada;
+        // ¿Tocó la zona para renombrar archivo (Y entre 60 y 90)?
+        if (touchY >= 60 && touchY <= 90 && touchX >= 10 && touchX <= canvas.width - 10) {
+            modoRenombrar = true;
+            nuevoNombreTemp = archivoAbiertoActual;
+            tecladoOculto.value = nuevoNombreTemp;
+            setTimeout(() => tecladoOculto.focus(), 50);
             return;
         }
 
-        // Actualiza el texto de la línea y desplaza el cursor según el dictado del teclado
-        lineasCodigo[lineaActual] = tecladoOculto.value;
-        columnaActual = tecladoOculto.selectionStart;
+        // Si tocó el cuerpo de código, enfoca el editor normal
+        if (touchY > 100 && touchY < canvas.height - 35) {
+            modoBuscadorLinea = false;
+            modoRenombrar = false;
+            tecladoOculto.value = lineasCodigo[lineaActual];
+            tecladoOculto.selectionStart = columnaActual;
+            tecladoOculto.selectionEnd = columnaActual;
+            setTimeout(() => tecladoOculto.focus(), 50);
+        }
     });
 
-    // Maneja teclas de control de sistema del teclado móvil (Enter y saltos de línea)
+    // --- MANEJO DE LAS FUNCIONES DEL IDE ---
+    function ejecutarBoton(id) {
+        if (id === 0) { // NUEVO
+            if (confirm("¿Seguro que querés crear un nuevo archivo? Se borrará el código actual.")) {
+                lineasCodigo = [""];
+                lineaActual = 0;
+                columnaActual = 0;
+                archivoAbiertoActual = "Sin_Nombre.cpp";
+            }
+        } 
+        else if (id === 1) { // ABRIR (Simulado leyendo archivos locales del celu)
+            fileInput.click();
+        } 
+        else if (id === 2) { // GUARDAR (Descarga el archivo al celular)
+            const contenido = lineasCodigo.join("\n");
+            const blob = new Blob([contenido], { type: "text/plain" });
+            const enlace = document.createElement("a");
+            enlace.href = URL.createObjectURL(blob);
+            enlace.download = archivoAbiertoActual;
+            enlace.click();
+        } 
+        else if (id === 3) { // BUSCAR LÍNEA
+            modoBuscadorLinea = true;
+            inputLineaBuscada = "";
+            tecladoOculto.value = "";
+            setTimeout(() => tecladoOculto.focus(), 50);
+        } 
+        else if (id === 4) { // EJECUTAR (Simulador de consola básica)
+            alert("Compilando en el dispositivo...\n\nSalida del Programa:\n-----------------------\n¡Hola Android!\n\n-----------------------\nProceso terminado con código 0.");
+        }
+    }
+
+    // Lector de archivos para la función "Abrir"
+    fileInput.addEventListener('change', (e) => {
+        const archivo = e.target.files[0];
+        if (!archivo) return;
+
+        archivoAbiertoActual = archivo.name;
+        const lector = new FileReader();
+        lector.onload = function(evento) {
+            const contenido = evento.target.result;
+            lineasCodigo = contenido.split(/\r?\n/);
+            if (lineasCodigo.length === 0) lineasCodigo = [""];
+            lineaActual = 0;
+            columnaActual = 0;
+        };
+        lector.readAsText(archivo);
+    });
+
+    // --- CAPTURA DE TEXTO Y ESCRITURA ---
+    tecladoOculto.addEventListener('input', (e) => {
+        let textoEntrada = tecladoOculto.value;
+
+        if (modoBuscadorLinea) {
+            inputLineaBuscada = textoEntrada.replace(/\D/g, ''); // Solo números
+            tecladoOculto.value = inputLineaBuscada;
+        } else if (modoRenombrar) {
+            nuevoNombreTemp = textoEntrada.replace(/[^a-zA-Z0-9_.]/g, ''); // Sin símbolos raros
+            tecladoOculto.value = nuevoNombreTemp;
+        } else {
+            lineasCodigo[lineaActual] = textoEntrada;
+            columnaActual = tecladoOculto.selectionStart;
+        }
+    });
+
     tecladoOculto.addEventListener('keydown', (e) => {
         let linea = lineasCodigo[lineaActual];
 
         if (e.key === 'Enter') {
-            e.preventDefault(); // Evita saltos de línea internos indeseados del textarea
+            e.preventDefault();
             
             if (modoBuscadorLinea) {
                 let destino = parseInt(inputLineaBuscada) - 1;
@@ -193,24 +309,26 @@
                     columnaActual = 0;
                 }
                 modoBuscadorLinea = false;
-                tecladoOculto.blur(); // Oculta el teclado
+                tecladoOculto.blur();
+            } else if (modoRenombrar) {
+                if (nuevoNombreTemp.trim() !== "") {
+                    archivoAbiertoActual = nuevoNombreTemp;
+                }
+                modoRenombrar = false;
+                tecladoOculto.blur();
             } else {
-                // Divide la línea actual en base a dónde estaba posicionado el cursor
                 let resto = linea.slice(columnaActual);
                 lineasCodigo[lineaActual] = linea.slice(0, columnaActual);
                 lineasCodigo.splice(lineaActual + 1, 0, resto);
                 lineaActual++;
                 columnaActual = 0;
-                
-                // Actualiza el estado del textarea para la nueva línea limpia
                 tecladoOculto.value = resto;
                 tecladoOculto.selectionStart = 0;
                 tecladoOculto.selectionEnd = 0;
             }
         }
         
-        // Fusión de líneas al borrar al inicio de una línea (Backspace especial)
-        if (e.key === 'Backspace' && columnaActual === 0 && lineaActual > 0) {
+        if (e.key === 'Backspace' && columnaActual === 0 && lineaActual > 0 && !modoBuscadorLinea && !modoRenombrar) {
             e.preventDefault();
             let lineaAnterior = lineasCodigo[lineaActual - 1];
             columnaActual = lineaAnterior.length;
@@ -218,14 +336,12 @@
             lineasCodigo.splice(lineaActual, 1);
             lineaActual--;
             
-            // Reajusta el textarea a la línea superior combinada
             tecladoOculto.value = lineasCodigo[lineaActual];
             tecladoOculto.selectionStart = columnaActual;
             tecladoOculto.selectionEnd = columnaActual;
         }
     });
 
-    // Inicialización segura cuando el documento está completamente cargado
     window.onload = function() {
         requestAnimationFrame(UpdateAndDraw);
     };
