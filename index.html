@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>raylibcompiler - IDE v1.0 (Mobile Port)</title>
     <style>
         body, html {
@@ -57,6 +57,11 @@
     let modoRenombrar = false;
     let nuevoNombreTemp = "";
 
+    // --- VARIABLES DE DINÁMICA DE TECLADO MÓVIL ---
+    let tecladoAbierto = false;
+    let alturaTecladoDetectada = 0;
+    let altoBarraHerramientas = 50;
+
     // --- TEXTAREA OCULTO ---
     const tecladoOculto = document.createElement('textarea');
     tecladoOculto.style.position = 'absolute';
@@ -69,6 +74,21 @@
     tecladoOculto.style.outline = 'none';
     tecladoOculto.value = "";
     document.body.appendChild(tecladoOculto);
+
+    // Escuchar el tamaño real de pantalla visible (Visual Viewport)
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', () => {
+            // Si la altura del viewport visual se reduce, el teclado está abierto
+            const alturaTeclado = window.innerHeight - window.visualViewport.height;
+            if (alturaTeclado > 80) {
+                tecladoAbierto = true;
+                alturaTecladoDetectada = alturaTeclado;
+            } else {
+                tecladoAbierto = false;
+                alturaTecladoDetectada = 0;
+            }
+        });
+    }
 
     tecladoOculto.addEventListener('focus', () => window.scrollTo(0, 0));
 
@@ -86,11 +106,14 @@
 
         // Dibujar líneas de código
         ctx.font = `${tamanioFuente}px monospace`;
+        
+        // El límite de dibujo inferior se adapta dinámicamente si el teclado tapa la pantalla
+        const limiteInferiorCodigo = canvas.height - (tecladoAbierto ? (alturaTecladoDetectada + altoBarraHerramientas + 20) : 100);
+
         for (let l = 0; l < lineasCodigo.length; l++) {
             let dibujoY = 120 + (l * altoLinea) - scrollY;
 
-            // Evitamos dibujar fuera de la zona visible del editor
-            if (dibujoY < 110 || dibujoY > canvas.height - 100) continue;
+            if (dibujoY < 110 || dibujoY > limiteInferiorCodigo) continue;
 
             // Números de línea
             ctx.fillStyle = "#858585";
@@ -161,35 +184,39 @@
         ctx.font = "bold 14px sans-serif";
         ctx.fillText(archivoAbiertoActual, 240, 79);
 
-        // --- NUEVO: BARRA DE ACCESOS RÁPIDOS Y TECLAS MÓVILES (Abajo) ---
-        ctx.fillStyle = "#252526";
-        ctx.fillRect(0, canvas.height - 85, canvas.width, 50);
+        // --- BARRA DE ACCESOS RÁPIDOS MÓVIL (Con posicionamiento dinámico sobre el teclado) ---
+        // Si el teclado está abierto, la barra se dibuja justo encima de él. Si no, va al final de la pantalla.
+        const barraY = canvas.height - altoBarraHerramientas - alturaTecladoDetectada - (tecladoAbierto ? 35 : 35);
         
-        // Dibujamos botones de acceso rápido: {}, (), "", ;, <, >, ⬅️, ➡️, ⬆️, ⬇️
+        ctx.fillStyle = "#252526";
+        ctx.fillRect(0, barraY, canvas.width, altoBarraHerramientas);
+        
         const teclasRapidas = ["{", "}", "(", ")", '"', ";", "<", ">", "⬅", "➡", "⬆", "⬇"];
         const anchoTecla = canvas.width / teclasRapidas.length;
         
         ctx.font = "bold 15px sans-serif";
         ctx.textAlign = "center";
         for (let t = 0; t < teclasRapidas.length; t++) {
-            // Línea separadora entre teclitas
             ctx.strokeStyle = "#3e3e3e";
-            ctx.strokeRect(t * anchoTecla, canvas.height - 85, anchoTecla, 50);
+            ctx.strokeRect(t * anchoTecla, barraY, anchoTecla, altoBarraHerramientas);
             
-            ctx.fillStyle = t >= 8 ? "#3e3e42" : "#2d2d30"; // Color diferente para las flechas
-            ctx.fillRect(t * anchoTecla + 1, canvas.height - 84, anchoTecla - 2, 48);
+            ctx.fillStyle = t >= 8 ? "#3e3e42" : "#2d2d30"; 
+            ctx.fillRect(t * anchoTecla + 1, barraY + 1, anchoTecla - 2, altoBarraHerramientas - 2);
             
             ctx.fillStyle = "#ffffff";
-            ctx.fillText(teclasRapidas[t], t * anchoTecla + anchoTecla/2, canvas.height - 55);
+            ctx.fillText(teclasRapidas[t], t * anchoTecla + anchoTecla/2, barraY + 30);
         }
         ctx.textAlign = "left";
 
         // --- BARRA DE ESTADO INFERIOR ---
-        ctx.fillStyle = "#007acc";
-        ctx.fillRect(0, canvas.height - 35, canvas.width, 35);
-        ctx.fillStyle = "#ffffff";
-        ctx.font = "12px sans-serif";
-        ctx.fillText(`Línea: ${lineaActual + 1} | Columna: ${columnaActual} | Total Líneas: ${lineasCodigo.length}`, 20, canvas.height - 12);
+        // Se esconde dinámicamente si el teclado está abierto para no estorbar
+        if (!tecladoAbierto) {
+            ctx.fillStyle = "#007acc";
+            ctx.fillRect(0, canvas.height - 35, canvas.width, 35);
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "12px sans-serif";
+            ctx.fillText(`Línea: ${lineaActual + 1} | Columna: ${columnaActual} | Total Líneas: ${lineasCodigo.length}`, 20, canvas.height - 12);
+        }
 
         // Modales
         if (modoBuscadorLinea) {
@@ -217,12 +244,12 @@
         ctx.textAlign = "left";
     }
 
-    // --- NUEVA LÓGICA TÁCTIL MEJORADA (Clic exacto en caracteres y teclado rápido) ---
+    // --- LÓGICA TÁCTIL (MÓVIL) ---
     window.addEventListener('touchend', (e) => {
         const touchX = e.changedTouches[0].clientX;
         const touchY = e.changedTouches[0].clientY;
 
-        // 1. ¿Tocó la botonera superior (Y entre 10 y 50)?
+        // 1. Botonera superior
         const btnW = (canvas.width - 60) / 5;
         if (touchY >= 10 && touchY <= 50) {
             for (let i = 0; i < 5; i++) {
@@ -234,7 +261,7 @@
             }
         }
 
-        // 2. ¿Tocó la zona para renombrar archivo (Y entre 60 y 90)?
+        // 2. Renombrar archivo
         if (touchY >= 60 && touchY <= 90 && touchX >= 10 && touchX <= canvas.width - 10) {
             modoRenombrar = true;
             nuevoNombreTemp = archivoAbiertoActual;
@@ -243,8 +270,9 @@
             return;
         }
 
-        // 3. ¿Tocó la barra de accesos rápidos y flechas (Y entre height - 85 y height - 35)?
-        if (touchY >= canvas.height - 85 && touchY <= canvas.height - 35) {
+        // 3. Barra de accesos rápidos adaptada dinámicamente según la posición del teclado
+        const barraY = canvas.height - altoBarraHerramientas - alturaTecladoDetectada - (tecladoAbierto ? 35 : 35);
+        if (touchY >= barraY && touchY <= barraY + altoBarraHerramientas) {
             const teclasRapidas = ["{", "}", "(", ")", '"', ";", "<", ">", "⬅", "➡", "⬆", "⬇"];
             const anchoTecla = canvas.width / teclasRapidas.length;
             const indiceTecla = Math.floor(touchX / anchoTecla);
@@ -255,17 +283,16 @@
             return;
         }
 
-        // 4. NUEVO: Posicionar el cursor exactamente donde tocas con el dedo en el código (Y entre 100 y height - 85)
-        if (touchY > 100 && touchY < canvas.height - 85) {
+        // 4. Posicionar el cursor en la letra exacta tocada en el código
+        const limiteInferiorCodigo = canvas.height - (tecladoAbierto ? (alturaTecladoDetectada + altoBarraHerramientas + 20) : 100);
+        if (touchY > 100 && touchY < limiteInferiorCodigo) {
             modoBuscadorLinea = false;
             modoRenombrar = false;
 
-            // Calcular a qué línea corresponde el toque según el scrollY
             let lineaTocada = Math.floor((touchY - 120 + scrollY + (altoLinea / 2)) / altoLinea);
             lineaTocada = Math.max(0, Math.min(lineaTocada, lineasCodigo.length - 1));
             lineaActual = lineaTocada;
 
-            // Calcular en qué letra/columna cayó el dedo midiendo el ancho del texto
             let linea = lineasCodigo[lineaActual];
             ctx.font = `${tamanioFuente}px monospace`;
             
@@ -284,7 +311,6 @@
             }
             columnaActual = mejorColumna;
 
-            // Sincronizamos el textarea
             tecladoOculto.value = linea;
             tecladoOculto.selectionStart = columnaActual;
             tecladoOculto.selectionEnd = columnaActual;
@@ -311,12 +337,10 @@
                 columnaActual = Math.min(columnaActual, lineasCodigo[lineaActual].length);
             }
         } else {
-            // Escribir el símbolo seleccionado ({, }, (, ), etc.) en la posición actual
             lineasCodigo[lineaActual] = linea.slice(0, columnaActual) + simbolo + linea.slice(columnaActual);
             columnaActual += simbolo.length;
         }
 
-        // Sincronizar el textarea invisible de Android
         tecladoOculto.value = lineasCodigo[lineaActual];
         tecladoOculto.selectionStart = columnaActual;
         tecladoOculto.selectionEnd = columnaActual;
