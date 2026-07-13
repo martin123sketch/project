@@ -24,6 +24,7 @@
 
 <canvas id="gameCanvas"></canvas>
 
+<!-- Input invisible para importar archivos (.cpp o .txt) -->
 <input type="file" id="fileInput" accept=".cpp,.txt" style="display: none;">
 
 <script>
@@ -56,7 +57,7 @@
     let modoRenombrar = false;
     let nuevoNombreTemp = "";
 
-    // --- TEXTAREA OCULTO PARA EL TECLADO EN CELULARES ---
+    // --- TEXTAREA OCULTO ---
     const tecladoOculto = document.createElement('textarea');
     tecladoOculto.style.position = 'absolute';
     tecladoOculto.style.left = '0px';
@@ -79,16 +80,17 @@
             temporizadorCursor = 0;
         }
 
-        // Fondo oscuro
+        // Fondo del IDE
         ctx.fillStyle = "#1e1e1e";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
         // Dibujar líneas de código
         ctx.font = `${tamanioFuente}px monospace`;
         for (let l = 0; l < lineasCodigo.length; l++) {
-            let dibujoY = 120 + (l * altoLinea) - scrollY; // Bajamos el código para dar espacio a la botonera
+            let dibujoY = 120 + (l * altoLinea) - scrollY;
 
-            if (dibujoY < 100 || dibujoY > canvas.height - 50) continue;
+            // Evitamos dibujar fuera de la zona visible del editor
+            if (dibujoY < 110 || dibujoY > canvas.height - 100) continue;
 
             // Números de línea
             ctx.fillStyle = "#858585";
@@ -119,6 +121,7 @@
                 acumuladoX += ctx.measureText(palabra).width;
             });
 
+            // Dibujar cursor
             if (l === lineaActual && mostrarCursor && !modoBuscadorLinea && !modoRenombrar) {
                 let textoHastaCursor = linea.substring(0, columnaActual);
                 let xCursor = 70 + ctx.measureText(textoHastaCursor).width;
@@ -127,26 +130,25 @@
             }
         }
 
-        // --- PANEL SUPERIOR / BOTONERA TÁCTIL ---
+        // --- PANEL SUPERIOR / BOTONERA ---
         ctx.fillStyle = "#2d2d2d";
         ctx.fillRect(0, 0, canvas.width, 100);
 
-        // Botones de acción (Ancho dinámico basado en pantalla)
         const btnW = (canvas.width - 60) / 5;
         const nombresBotones = ["Nuevo", "Abrir", "Guardar", "Buscar L.", "Ejecutar"];
         
         ctx.font = "12px sans-serif";
         for (let i = 0; i < 5; i++) {
             let btnX = 10 + i * (btnW + 10);
-            ctx.fillStyle = i === 4 ? "#0e639c" : "#3c3c3c"; // El botón Ejecutar va en azul
+            ctx.fillStyle = i === 4 ? "#0e639c" : "#3c3c3c";
             ctx.fillRect(btnX, 10, btnW, 40);
             ctx.fillStyle = "#ffffff";
             ctx.textAlign = "center";
             ctx.fillText(nombresBotones[i], btnX + btnW/2, 33);
         }
-        ctx.textAlign = "left"; // Resetear alineación
+        ctx.textAlign = "left";
 
-        // Zona interactiva del Nombre del Archivo (¡Permite cambiar el nombre!)
+        // Nombre de archivo activo
         ctx.fillStyle = "#1e1e1e";
         ctx.fillRect(10, 60, canvas.width - 20, 30);
         ctx.strokeStyle = "#007acc";
@@ -159,14 +161,37 @@
         ctx.font = "bold 14px sans-serif";
         ctx.fillText(archivoAbiertoActual, 240, 79);
 
+        // --- NUEVO: BARRA DE ACCESOS RÁPIDOS Y TECLAS MÓVILES (Abajo) ---
+        ctx.fillStyle = "#252526";
+        ctx.fillRect(0, canvas.height - 85, canvas.width, 50);
+        
+        // Dibujamos botones de acceso rápido: {}, (), "", ;, <, >, ⬅️, ➡️, ⬆️, ⬇️
+        const teclasRapidas = ["{", "}", "(", ")", '"', ";", "<", ">", "⬅", "➡", "⬆", "⬇"];
+        const anchoTecla = canvas.width / teclasRapidas.length;
+        
+        ctx.font = "bold 15px sans-serif";
+        ctx.textAlign = "center";
+        for (let t = 0; t < teclasRapidas.length; t++) {
+            // Línea separadora entre teclitas
+            ctx.strokeStyle = "#3e3e3e";
+            ctx.strokeRect(t * anchoTecla, canvas.height - 85, anchoTecla, 50);
+            
+            ctx.fillStyle = t >= 8 ? "#3e3e42" : "#2d2d30"; // Color diferente para las flechas
+            ctx.fillRect(t * anchoTecla + 1, canvas.height - 84, anchoTecla - 2, 48);
+            
+            ctx.fillStyle = "#ffffff";
+            ctx.fillText(teclasRapidas[t], t * anchoTecla + anchoTecla/2, canvas.height - 55);
+        }
+        ctx.textAlign = "left";
+
         // --- BARRA DE ESTADO INFERIOR ---
         ctx.fillStyle = "#007acc";
         ctx.fillRect(0, canvas.height - 35, canvas.width, 35);
         ctx.fillStyle = "#ffffff";
-        ctx.font = "13px sans-serif";
-        ctx.fillText(`Línea: ${lineaActual + 1} | Columna: ${columnaActual} | Líneas totales: ${lineasCodigo.length}`, 20, canvas.height - 13);
+        ctx.font = "12px sans-serif";
+        ctx.fillText(`Línea: ${lineaActual + 1} | Columna: ${columnaActual} | Total Líneas: ${lineasCodigo.length}`, 20, canvas.height - 12);
 
-        // --- MODALES (Buscador y Renombrar) ---
+        // Modales
         if (modoBuscadorLinea) {
             dibujarModal("Ir a la línea:", inputLineaBuscada);
         } else if (modoRenombrar) {
@@ -192,15 +217,13 @@
         ctx.textAlign = "left";
     }
 
-    // --- LÓGICA DE CONTROL TÁCTIL (MÓVIL) ---
+    // --- NUEVA LÓGICA TÁCTIL MEJORADA (Clic exacto en caracteres y teclado rápido) ---
     window.addEventListener('touchend', (e) => {
         const touchX = e.changedTouches[0].clientX;
         const touchY = e.changedTouches[0].clientY;
 
-        // Ancho de los botones
+        // 1. ¿Tocó la botonera superior (Y entre 10 y 50)?
         const btnW = (canvas.width - 60) / 5;
-
-        // ¿Tocó la botonera superior (Y entre 10 y 50)?
         if (touchY >= 10 && touchY <= 50) {
             for (let i = 0; i < 5; i++) {
                 let btnX = 10 + i * (btnW + 10);
@@ -211,7 +234,7 @@
             }
         }
 
-        // ¿Tocó la zona para renombrar archivo (Y entre 60 y 90)?
+        // 2. ¿Tocó la zona para renombrar archivo (Y entre 60 y 90)?
         if (touchY >= 60 && touchY <= 90 && touchX >= 10 && touchX <= canvas.width - 10) {
             modoRenombrar = true;
             nuevoNombreTemp = archivoAbiertoActual;
@@ -220,20 +243,88 @@
             return;
         }
 
-        // Si tocó el cuerpo de código, enfoca el editor normal
-        if (touchY > 100 && touchY < canvas.height - 35) {
+        // 3. ¿Tocó la barra de accesos rápidos y flechas (Y entre height - 85 y height - 35)?
+        if (touchY >= canvas.height - 85 && touchY <= canvas.height - 35) {
+            const teclasRapidas = ["{", "}", "(", ")", '"', ";", "<", ">", "⬅", "➡", "⬆", "⬇"];
+            const anchoTecla = canvas.width / teclasRapidas.length;
+            const indiceTecla = Math.floor(touchX / anchoTecla);
+            
+            if (indiceTecla >= 0 && indiceTecla < teclasRapidas.length) {
+                presionarTeclaEspecial(teclasRapidas[indiceTecla]);
+            }
+            return;
+        }
+
+        // 4. NUEVO: Posicionar el cursor exactamente donde tocas con el dedo en el código (Y entre 100 y height - 85)
+        if (touchY > 100 && touchY < canvas.height - 85) {
             modoBuscadorLinea = false;
             modoRenombrar = false;
-            tecladoOculto.value = lineasCodigo[lineaActual];
+
+            // Calcular a qué línea corresponde el toque según el scrollY
+            let lineaTocada = Math.floor((touchY - 120 + scrollY + (altoLinea / 2)) / altoLinea);
+            lineaTocada = Math.max(0, Math.min(lineaTocada, lineasCodigo.length - 1));
+            lineaActual = lineaTocada;
+
+            // Calcular en qué letra/columna cayó el dedo midiendo el ancho del texto
+            let linea = lineasCodigo[lineaActual];
+            ctx.font = `${tamanioFuente}px monospace`;
+            
+            let mejorColumna = 0;
+            let menorDistancia = Infinity;
+
+            for (let col = 0; col <= linea.length; col++) {
+                let anchoTexto = ctx.measureText(linea.substring(0, col)).width;
+                let posXLetra = 70 + anchoTexto;
+                let distancia = Math.abs(touchX - posXLetra);
+
+                if (distancia < menorDistancia) {
+                    menorDistancia = distancia;
+                    mejorColumna = col;
+                }
+            }
+            columnaActual = mejorColumna;
+
+            // Sincronizamos el textarea
+            tecladoOculto.value = linea;
             tecladoOculto.selectionStart = columnaActual;
             tecladoOculto.selectionEnd = columnaActual;
             setTimeout(() => tecladoOculto.focus(), 50);
         }
     });
 
-    // --- MANEJO DE LAS FUNCIONES DEL IDE ---
+    // --- ACCIONES DE ACCESOS RÁPIDOS Y FLECHAS ---
+    function presionarTeclaEspecial(simbolo) {
+        let linea = lineasCodigo[lineaActual];
+
+        if (simbolo === "⬅") {
+            if (columnaActual > 0) columnaActual--;
+        } else if (simbolo === "➡") {
+            if (columnaActual < linea.length) columnaActual++;
+        } else if (simbolo === "⬆") {
+            if (lineaActual > 0) {
+                lineaActual--;
+                columnaActual = Math.min(columnaActual, lineasCodigo[lineaActual].length);
+            }
+        } else if (simbolo === "⬇") {
+            if (lineaActual < lineasCodigo.length - 1) {
+                lineaActual++;
+                columnaActual = Math.min(columnaActual, lineasCodigo[lineaActual].length);
+            }
+        } else {
+            // Escribir el símbolo seleccionado ({, }, (, ), etc.) en la posición actual
+            lineasCodigo[lineaActual] = linea.slice(0, columnaActual) + simbolo + linea.slice(columnaActual);
+            columnaActual += simbolo.length;
+        }
+
+        // Sincronizar el textarea invisible de Android
+        tecladoOculto.value = lineasCodigo[lineaActual];
+        tecladoOculto.selectionStart = columnaActual;
+        tecladoOculto.selectionEnd = columnaActual;
+    }
+
+    // --- PANEL DE ACCIONES ---
     function ejecutarBoton(id) {
-        if (id === 0) { // NUEVO
+        if (id === 0) {
             if (confirm("¿Seguro que querés crear un nuevo archivo? Se borrará el código actual.")) {
                 lineasCodigo = [""];
                 lineaActual = 0;
@@ -241,10 +332,10 @@
                 archivoAbiertoActual = "Sin_Nombre.cpp";
             }
         } 
-        else if (id === 1) { // ABRIR (Simulado leyendo archivos locales del celu)
+        else if (id === 1) {
             fileInput.click();
         } 
-        else if (id === 2) { // GUARDAR (Descarga el archivo al celular)
+        else if (id === 2) {
             const contenido = lineasCodigo.join("\n");
             const blob = new Blob([contenido], { type: "text/plain" });
             const enlace = document.createElement("a");
@@ -252,18 +343,17 @@
             enlace.download = archivoAbiertoActual;
             enlace.click();
         } 
-        else if (id === 3) { // BUSCAR LÍNEA
+        else if (id === 3) {
             modoBuscadorLinea = true;
             inputLineaBuscada = "";
             tecladoOculto.value = "";
             setTimeout(() => tecladoOculto.focus(), 50);
         } 
-        else if (id === 4) { // EJECUTAR (Simulador de consola básica)
+        else if (id === 4) {
             alert("Compilando en el dispositivo...\n\nSalida del Programa:\n-----------------------\n¡Hola Android!\n\n-----------------------\nProceso terminado con código 0.");
         }
     }
 
-    // Lector de archivos para la función "Abrir"
     fileInput.addEventListener('change', (e) => {
         const archivo = e.target.files[0];
         if (!archivo) return;
@@ -280,15 +370,15 @@
         lector.readAsText(archivo);
     });
 
-    // --- CAPTURA DE TEXTO Y ESCRITURA ---
+    // --- CAPTURA DE ESCRITURA ---
     tecladoOculto.addEventListener('input', (e) => {
         let textoEntrada = tecladoOculto.value;
 
         if (modoBuscadorLinea) {
-            inputLineaBuscada = textoEntrada.replace(/\D/g, ''); // Solo números
+            inputLineaBuscada = textoEntrada.replace(/\D/g, '');
             tecladoOculto.value = inputLineaBuscada;
         } else if (modoRenombrar) {
-            nuevoNombreTemp = textoEntrada.replace(/[^a-zA-Z0-9_.]/g, ''); // Sin símbolos raros
+            nuevoNombreTemp = textoEntrada.replace(/[^a-zA-Z0-9_.]/g, '');
             tecladoOculto.value = nuevoNombreTemp;
         } else {
             lineasCodigo[lineaActual] = textoEntrada;
