@@ -18,7 +18,8 @@
             width: 100vw;
             height: 100vh;
         }
-        /* --- NUEVO: BARRA DE HERRAMIENTAS EN HTML REAL --- */
+        
+        /* BARRA DE ATAJOS FLOTANTE CORREGIDA */
         #barra-atajos {
             position: fixed;
             bottom: 0;
@@ -27,10 +28,13 @@
             height: 50px;
             background-color: #252526;
             display: flex;
-            z-index: 9999;
-            border-top: 1px solid #3e3e3e;
+            z-index: 999999; /* Prioridad súper alta */
+            border-top: 2px solid #b446ff;
             box-sizing: border-box;
+            transform: translateY(0);
+            transition: transform 0.1s ease-out, bottom 0.1s ease-out;
         }
+        
         .tecla {
             flex: 1;
             height: 100%;
@@ -51,7 +55,7 @@
             border-right: none;
         }
         .tecla:active {
-            background-color: #0e639c; /* Se pone azul al tocarla */
+            background-color: #0e639c;
         }
         .tecla.flecha {
             background-color: #3e3e42;
@@ -62,7 +66,6 @@
 
 <canvas id="gameCanvas"></canvas>
 
-<!-- Barra flotante física de accesos rápidos -->
 <div id="barra-atajos">
     <div class="tecla" data-simbolo="{">{</div>
     <div class="tecla" data-simbolo="}">}</div>
@@ -78,13 +81,13 @@
     <div class="tecla flecha" data-simbolo="⬇">⬇</div>
 </div>
 
-<!-- Input invisible para importar archivos (.cpp o .txt) -->
 <input type="file" id="fileInput" accept=".cpp,.txt" style="display: none;">
 
 <script>
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
     const fileInput = document.getElementById('fileInput');
+    const barraAtajos = document.getElementById('barra-atajos');
 
     function resizeCanvas() {
         canvas.width = window.innerWidth;
@@ -111,6 +114,9 @@
     let modoRenombrar = false;
     let nuevoNombreTemp = "";
 
+    // Variable para controlar la altura dinámica del editor
+    let espacioTecladoActivo = 0;
+
     // --- TEXTAREA OCULTO ---
     const tecladoOculto = document.createElement('textarea');
     tecladoOculto.style.position = 'absolute';
@@ -126,6 +132,25 @@
 
     tecladoOculto.addEventListener('focus', () => window.scrollTo(0, 0));
 
+    // --- DETECTOR DINÁMICO DE TECLADO MÓVIL ---
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', () => {
+            const viewportHeight = window.visualViewport.height;
+            const windowHeight = window.innerHeight;
+            const diferencia = windowHeight - viewportHeight;
+
+            if (diferencia > 100) {
+                // Teclado abierto: Desplazamos la barra de atajos exactamente sobre el teclado
+                barraAtajos.style.bottom = `${diferencia}px`;
+                espacioTecladoActivo = diferencia;
+            } else {
+                // Teclado cerrado: Regresa al fondo
+                barraAtajos.style.bottom = '0px';
+                espacioTecladoActivo = 0;
+            }
+        });
+    }
+
     // Bucle de renderizado
     function UpdateAndDraw() {
         temporizadorCursor += 1/60;
@@ -134,26 +159,22 @@
             temporizadorCursor = 0;
         }
 
-        // Fondo del IDE
         ctx.fillStyle = "#1e1e1e";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        // Dibujar líneas de código
         ctx.font = `${tamanioFuente}px monospace`;
         
-        // Dejamos un margen abajo de 60px para que el código no se tape con la barra HTML
-        const limiteInferiorCodigo = canvas.height - 80;
+        // El límite de dibujo del código se reduce dinámicamente si el teclado está abierto
+        const limiteInferiorCodigo = canvas.height - 80 - espacioTecladoActivo;
 
         for (let l = 0; l < lineasCodigo.length; l++) {
             let dibujoY = 120 + (l * altoLinea) - scrollY;
 
             if (dibujoY < 110 || dibujoY > limiteInferiorCodigo) continue;
 
-            // Números de línea
             ctx.fillStyle = "#858585";
             ctx.fillText((l + 1).toString(), 20, dibujoY);
 
-            // Separador
             ctx.fillStyle = "#3c3c3c";
             ctx.fillRect(55, dibujoY - 16, 2, altoLinea);
 
@@ -178,7 +199,6 @@
                 acumuladoX += ctx.measureText(palabra).width;
             });
 
-            // Dibujar cursor
             if (l === lineaActual && mostrarCursor && !modoBuscadorLinea && !modoRenombrar) {
                 let textoHastaCursor = linea.substring(0, columnaActual);
                 let xCursor = 70 + ctx.measureText(textoHastaCursor).width;
@@ -187,7 +207,7 @@
             }
         }
 
-        // --- PANEL SUPERIOR / BOTONERA ---
+        // PANEL SUPERIOR
         ctx.fillStyle = "#2d2d2d";
         ctx.fillRect(0, 0, canvas.width, 100);
 
@@ -205,7 +225,6 @@
         }
         ctx.textAlign = "left";
 
-        // Nombre de archivo activo
         ctx.fillStyle = "#1e1e1e";
         ctx.fillRect(10, 60, canvas.width - 20, 30);
         ctx.strokeStyle = "#007acc";
@@ -218,7 +237,6 @@
         ctx.font = "bold 14px sans-serif";
         ctx.fillText(archivoAbiertoActual, 240, 79);
 
-        // Modales
         if (modoBuscadorLinea) {
             dibujarModal("Ir a la línea:", inputLineaBuscada);
         } else if (modoRenombrar) {
@@ -244,15 +262,16 @@
         ctx.textAlign = "left";
     }
 
-    // --- LÓGICA TÁCTIL (MÓVIL) ---
+    // LÓGICA TÁCTIL
     window.addEventListener('touchend', (e) => {
         const touchX = e.changedTouches[0].clientX;
         const touchY = e.changedTouches[0].clientY;
 
-        // Si tocó la barra de atajos física, no hacemos nada acá (lo maneja el evento de la barra)
-        if (touchY >= window.innerHeight - 50) return;
+        // Si toca donde está la barra flotante, evitamos que interfiera el Canvas
+        const rectBarra = barraAtajos.getBoundingClientRect();
+        if (touchY >= rectBarra.top) return;
 
-        // 1. Botonera superior
+        // Botonera superior
         const btnW = (canvas.width - 60) / 5;
         if (touchY >= 10 && touchY <= 50) {
             for (let i = 0; i < 5; i++) {
@@ -264,7 +283,7 @@
             }
         }
 
-        // 2. Renombrar archivo
+        // Renombrar
         if (touchY >= 60 && touchY <= 90 && touchX >= 10 && touchX <= canvas.width - 10) {
             modoRenombrar = true;
             nuevoNombreTemp = archivoAbiertoActual;
@@ -273,8 +292,9 @@
             return;
         }
 
-        // 3. Posicionar el cursor en la letra exacta tocada en el código
-        if (touchY > 100 && touchY < window.innerHeight - 50) {
+        // Click en editor
+        const limiteInferiorCodigo = canvas.height - 80 - espacioTecladoActivo;
+        if (touchY > 100 && touchY < limiteInferiorCodigo) {
             modoBuscadorLinea = false;
             modoRenombrar = false;
 
@@ -307,9 +327,8 @@
         }
     });
 
-    // --- CAPTURA DE LOS BOTONES DE LA BARRA FÍSICA ---
+    // CAPTURA DE TECLAS EN HTML
     document.querySelectorAll('.tecla').forEach(boton => {
-        // Usamos 'touchstart' con 'preventDefault' para que al tocar un botón el teclado NO pierda el foco
         boton.addEventListener('touchstart', (e) => {
             e.preventDefault(); 
             const simbolo = boton.getAttribute('data-simbolo');
@@ -335,21 +354,18 @@
                 columnaActual = Math.min(columnaActual, lineasCodigo[lineaActual].length);
             }
         } else {
-            // Inserta el símbolo en la posición del cursor
             lineasCodigo[lineaActual] = linea.slice(0, columnaActual) + simbolo + linea.slice(columnaActual);
             columnaActual += simbolo.length;
         }
 
-        // Mantenemos sincronizado el textarea
         tecladoOculto.value = lineasCodigo[lineaActual];
         tecladoOculto.selectionStart = columnaActual;
         tecladoOculto.selectionEnd = columnaActual;
     }
 
-    // --- PANEL DE ACCIONES ---
     function ejecutarBoton(id) {
         if (id === 0) {
-            if (confirm("¿Seguro que querés crear un nuevo archivo? Se borrará el código actual.")) {
+            if (confirm("¿Seguro que querés crear un nuevo archivo?")) {
                 lineasCodigo = [""];
                 lineaActual = 0;
                 columnaActual = 0;
@@ -394,7 +410,6 @@
         lector.readAsText(archivo);
     });
 
-    // --- CAPTURA DE ESCRITURA ---
     tecladoOculto.addEventListener('input', (e) => {
         let textoEntrada = tecladoOculto.value;
 
