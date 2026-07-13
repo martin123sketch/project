@@ -18,11 +18,65 @@
             width: 100vw;
             height: 100vh;
         }
+        /* --- NUEVO: BARRA DE HERRAMIENTAS EN HTML REAL --- */
+        #barra-atajos {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 50px;
+            background-color: #252526;
+            display: flex;
+            z-index: 9999;
+            border-top: 1px solid #3e3e3e;
+            box-sizing: border-box;
+        }
+        .tecla {
+            flex: 1;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: #ffffff;
+            font-family: sans-serif;
+            font-weight: bold;
+            font-size: 16px;
+            background-color: #2d2d30;
+            border-right: 1px solid #3e3e3e;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+        .tecla:last-child {
+            border-right: none;
+        }
+        .tecla:active {
+            background-color: #0e639c; /* Se pone azul al tocarla */
+        }
+        .tecla.flecha {
+            background-color: #3e3e42;
+        }
     </style>
 </head>
 <body>
 
 <canvas id="gameCanvas"></canvas>
+
+<!-- Barra flotante física de accesos rápidos -->
+<div id="barra-atajos">
+    <div class="tecla" data-simbolo="{">{</div>
+    <div class="tecla" data-simbolo="}">}</div>
+    <div class="tecla" data-simbolo="(">(</div>
+    <div class="tecla" data-simbolo=")">)</div>
+    <div class="tecla" data-simbolo='"'>"</div>
+    <div class="tecla" data-simbolo=";">;</div>
+    <div class="tecla" data-simbolo="<">&lt;</div>
+    <div class="tecla" data-simbolo=">">&gt;</div>
+    <div class="tecla flecha" data-simbolo="⬅">⬅</div>
+    <div class="tecla flecha" data-simbolo="➡">➡</div>
+    <div class="tecla flecha" data-simbolo="⬆">⬆</div>
+    <div class="tecla flecha" data-simbolo="⬇">⬇</div>
+</div>
 
 <!-- Input invisible para importar archivos (.cpp o .txt) -->
 <input type="file" id="fileInput" accept=".cpp,.txt" style="display: none;">
@@ -57,11 +111,6 @@
     let modoRenombrar = false;
     let nuevoNombreTemp = "";
 
-    // --- VARIABLES DE DINÁMICA DE TECLADO MÓVIL ---
-    let tecladoAbierto = false;
-    let alturaTecladoDetectada = 0;
-    let altoBarraHerramientas = 50;
-
     // --- TEXTAREA OCULTO ---
     const tecladoOculto = document.createElement('textarea');
     tecladoOculto.style.position = 'absolute';
@@ -74,21 +123,6 @@
     tecladoOculto.style.outline = 'none';
     tecladoOculto.value = "";
     document.body.appendChild(tecladoOculto);
-
-    // Escuchar el tamaño real de pantalla visible (Visual Viewport)
-    if (window.visualViewport) {
-        window.visualViewport.addEventListener('resize', () => {
-            // Si la altura del viewport visual se reduce, el teclado está abierto
-            const alturaTeclado = window.innerHeight - window.visualViewport.height;
-            if (alturaTeclado > 80) {
-                tecladoAbierto = true;
-                alturaTecladoDetectada = alturaTeclado;
-            } else {
-                tecladoAbierto = false;
-                alturaTecladoDetectada = 0;
-            }
-        });
-    }
 
     tecladoOculto.addEventListener('focus', () => window.scrollTo(0, 0));
 
@@ -107,8 +141,8 @@
         // Dibujar líneas de código
         ctx.font = `${tamanioFuente}px monospace`;
         
-        // El límite de dibujo inferior se adapta dinámicamente si el teclado tapa la pantalla
-        const limiteInferiorCodigo = canvas.height - (tecladoAbierto ? (alturaTecladoDetectada + altoBarraHerramientas + 20) : 100);
+        // Dejamos un margen abajo de 60px para que el código no se tape con la barra HTML
+        const limiteInferiorCodigo = canvas.height - 80;
 
         for (let l = 0; l < lineasCodigo.length; l++) {
             let dibujoY = 120 + (l * altoLinea) - scrollY;
@@ -184,40 +218,6 @@
         ctx.font = "bold 14px sans-serif";
         ctx.fillText(archivoAbiertoActual, 240, 79);
 
-        // --- BARRA DE ACCESOS RÁPIDOS MÓVIL (Con posicionamiento dinámico sobre el teclado) ---
-        // Si el teclado está abierto, la barra se dibuja justo encima de él. Si no, va al final de la pantalla.
-        const barraY = canvas.height - altoBarraHerramientas - alturaTecladoDetectada - (tecladoAbierto ? 35 : 35);
-        
-        ctx.fillStyle = "#252526";
-        ctx.fillRect(0, barraY, canvas.width, altoBarraHerramientas);
-        
-        const teclasRapidas = ["{", "}", "(", ")", '"', ";", "<", ">", "⬅", "➡", "⬆", "⬇"];
-        const anchoTecla = canvas.width / teclasRapidas.length;
-        
-        ctx.font = "bold 15px sans-serif";
-        ctx.textAlign = "center";
-        for (let t = 0; t < teclasRapidas.length; t++) {
-            ctx.strokeStyle = "#3e3e3e";
-            ctx.strokeRect(t * anchoTecla, barraY, anchoTecla, altoBarraHerramientas);
-            
-            ctx.fillStyle = t >= 8 ? "#3e3e42" : "#2d2d30"; 
-            ctx.fillRect(t * anchoTecla + 1, barraY + 1, anchoTecla - 2, altoBarraHerramientas - 2);
-            
-            ctx.fillStyle = "#ffffff";
-            ctx.fillText(teclasRapidas[t], t * anchoTecla + anchoTecla/2, barraY + 30);
-        }
-        ctx.textAlign = "left";
-
-        // --- BARRA DE ESTADO INFERIOR ---
-        // Se esconde dinámicamente si el teclado está abierto para no estorbar
-        if (!tecladoAbierto) {
-            ctx.fillStyle = "#007acc";
-            ctx.fillRect(0, canvas.height - 35, canvas.width, 35);
-            ctx.fillStyle = "#ffffff";
-            ctx.font = "12px sans-serif";
-            ctx.fillText(`Línea: ${lineaActual + 1} | Columna: ${columnaActual} | Total Líneas: ${lineasCodigo.length}`, 20, canvas.height - 12);
-        }
-
         // Modales
         if (modoBuscadorLinea) {
             dibujarModal("Ir a la línea:", inputLineaBuscada);
@@ -249,6 +249,9 @@
         const touchX = e.changedTouches[0].clientX;
         const touchY = e.changedTouches[0].clientY;
 
+        // Si tocó la barra de atajos física, no hacemos nada acá (lo maneja el evento de la barra)
+        if (touchY >= window.innerHeight - 50) return;
+
         // 1. Botonera superior
         const btnW = (canvas.width - 60) / 5;
         if (touchY >= 10 && touchY <= 50) {
@@ -270,22 +273,8 @@
             return;
         }
 
-        // 3. Barra de accesos rápidos adaptada dinámicamente según la posición del teclado
-        const barraY = canvas.height - altoBarraHerramientas - alturaTecladoDetectada - (tecladoAbierto ? 35 : 35);
-        if (touchY >= barraY && touchY <= barraY + altoBarraHerramientas) {
-            const teclasRapidas = ["{", "}", "(", ")", '"', ";", "<", ">", "⬅", "➡", "⬆", "⬇"];
-            const anchoTecla = canvas.width / teclasRapidas.length;
-            const indiceTecla = Math.floor(touchX / anchoTecla);
-            
-            if (indiceTecla >= 0 && indiceTecla < teclasRapidas.length) {
-                presionarTeclaEspecial(teclasRapidas[indiceTecla]);
-            }
-            return;
-        }
-
-        // 4. Posicionar el cursor en la letra exacta tocada en el código
-        const limiteInferiorCodigo = canvas.height - (tecladoAbierto ? (alturaTecladoDetectada + altoBarraHerramientas + 20) : 100);
-        if (touchY > 100 && touchY < limiteInferiorCodigo) {
+        // 3. Posicionar el cursor en la letra exacta tocada en el código
+        if (touchY > 100 && touchY < window.innerHeight - 50) {
             modoBuscadorLinea = false;
             modoRenombrar = false;
 
@@ -318,7 +307,16 @@
         }
     });
 
-    // --- ACCIONES DE ACCESOS RÁPIDOS Y FLECHAS ---
+    // --- CAPTURA DE LOS BOTONES DE LA BARRA FÍSICA ---
+    document.querySelectorAll('.tecla').forEach(boton => {
+        // Usamos 'touchstart' con 'preventDefault' para que al tocar un botón el teclado NO pierda el foco
+        boton.addEventListener('touchstart', (e) => {
+            e.preventDefault(); 
+            const simbolo = boton.getAttribute('data-simbolo');
+            presionarTeclaEspecial(simbolo);
+        });
+    });
+
     function presionarTeclaEspecial(simbolo) {
         let linea = lineasCodigo[lineaActual];
 
@@ -337,10 +335,12 @@
                 columnaActual = Math.min(columnaActual, lineasCodigo[lineaActual].length);
             }
         } else {
+            // Inserta el símbolo en la posición del cursor
             lineasCodigo[lineaActual] = linea.slice(0, columnaActual) + simbolo + linea.slice(columnaActual);
             columnaActual += simbolo.length;
         }
 
+        // Mantenemos sincronizado el textarea
         tecladoOculto.value = lineasCodigo[lineaActual];
         tecladoOculto.selectionStart = columnaActual;
         tecladoOculto.selectionEnd = columnaActual;
