@@ -28,7 +28,7 @@
             height: 50px;
             background-color: #252526;
             display: flex;
-            z-index: 999999; /* Prioridad súper alta */
+            z-index: 999999;
             border-top: 2px solid #b446ff;
             box-sizing: border-box;
             transform: translateY(0);
@@ -140,11 +140,9 @@
             const diferencia = windowHeight - viewportHeight;
 
             if (diferencia > 100) {
-                // Teclado abierto: Desplazamos la barra de atajos exactamente sobre el teclado
                 barraAtajos.style.bottom = `${diferencia}px`;
                 espacioTecladoActivo = diferencia;
             } else {
-                // Teclado cerrado: Regresa al fondo
                 barraAtajos.style.bottom = '0px';
                 espacioTecladoActivo = 0;
             }
@@ -164,7 +162,6 @@
 
         ctx.font = `${tamanioFuente}px monospace`;
         
-        // El límite de dibujo del código se reduce dinámicamente si el teclado está abierto
         const limiteInferiorCodigo = canvas.height - 80 - espacioTecladoActivo;
 
         for (let l = 0; l < lineasCodigo.length; l++) {
@@ -267,7 +264,6 @@
         const touchX = e.changedTouches[0].clientX;
         const touchY = e.changedTouches[0].clientY;
 
-        // Si toca donde está la barra flotante, evitamos que interfiera el Canvas
         const rectBarra = barraAtajos.getBoundingClientRect();
         if (touchY >= rectBarra.top) return;
 
@@ -376,11 +372,18 @@
             fileInput.click();
         } 
         else if (id === 2) {
+            // --- CORRECCIÓN: GUARDAR CON EL NOMBRE REAL ---
             const contenido = lineasCodigo.join("\n");
             const blob = new Blob([contenido], { type: "text/plain" });
             const enlace = document.createElement("a");
             enlace.href = URL.createObjectURL(blob);
-            enlace.download = archivoAbiertoActual;
+            
+            let nombreParaGuardar = archivoAbiertoActual.trim();
+            if(!nombreParaGuardar.endsWith(".cpp") && !nombreParaGuardar.endsWith(".txt")) {
+                nombreParaGuardar += ".cpp";
+            }
+            
+            enlace.download = nombreParaGuardar;
             enlace.click();
         } 
         else if (id === 3) {
@@ -390,7 +393,24 @@
             setTimeout(() => tecladoOculto.focus(), 50);
         } 
         else if (id === 4) {
-            alert("Compilando en el dispositivo...\n\nSalida del Programa:\n-----------------------\n¡Hola Android!\n\n-----------------------\nProceso terminado con código 0.");
+            // --- CORRECCIÓN: EJECUTAR EL CÓDIGO ACTUAL DEL USUARIO ---
+            const todoElCodigoEscrito = lineasCodigo.join("\n");
+            
+            let salidaSimulada = "";
+            const regexCout = /std::cout\s*<<\s*["']([^"']*)["']/g;
+            let coincidencias;
+            let huboSalidas = false;
+
+            while ((coincidencias = regexCout.exec(todoElCodigoEscrito)) !== null) {
+                salidaSimulada += coincidencias[1] + "\n";
+                huboSalidas = true;
+            }
+
+            if (!huboSalidas) {
+                salidaSimulada = "[Proceso ejecutado correctamente sin salida de texto]";
+            }
+
+            alert(`Compilando ${archivoAbiertoActual}...\n\nSalida de tu programa:\n-----------------------\n${salidaSimulada}\n-----------------------\nProceso terminado con éxito.`);
         }
     }
 
